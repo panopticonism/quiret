@@ -17,7 +17,12 @@
   >
     <div class="cover-container">
       {#if book.coverPath}
-        <img src={coverSrc} alt={book.title} loading="lazy" />
+        {#if isAudio}
+          <div class="cover-blur" style="background-image: url('{coverSrc}')"></div>
+          <img class="cover-fg" src={coverSrc} alt={book.title} loading="lazy" />
+        {:else}
+          <img src={coverSrc} alt={book.title} loading="lazy" />
+        {/if}
       {:else}
         <div class="no-cover">
           <span class="no-cover-title">{book.title}</span>
@@ -115,6 +120,27 @@
     height: 100%;
     object-fit: cover;
     display: block;
+  }
+
+  /* Audio covers (podcast/album art) are often square; show the whole cover
+     on a blurred fill of itself instead of cropping it into the 2:3 card. */
+  .cover-blur {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    filter: blur(22px) brightness(0.8) saturate(1.1);
+    transform: scale(1.2);
+  }
+
+  .cover-fg {
+    position: absolute;
+    inset: 0;
+  }
+
+  .book-card img.cover-fg {
+    object-fit: contain;
+    padding: 0.55rem;
   }
 
   .no-cover {
