@@ -1,5 +1,6 @@
 <script>
   import { onMount } from "svelte";
+  import { saveLocalProgress, effectiveProgress } from "../lib/offline.js";
 
   let { bookId, metadata, onClose } = $props();
 
@@ -31,8 +32,9 @@
   // audio element's loadedmetadata event can fire on a fast/cached load.
   let resumePosition = (() => {
     try {
-      if (metadata?.readingProgress) {
-        const p = JSON.parse(metadata.readingProgress);
+      const raw = effectiveProgress(metadata);
+      if (raw) {
+        const p = JSON.parse(raw);
         if (p.type === "audio" && p.position) return p.position;
       }
     } catch {}
@@ -80,13 +82,13 @@
 
   const saveProgress = (immediate = false) => {
     if (!duration) return;
-    const body = JSON.stringify({
-      progress: JSON.stringify({
-        type: "audio",
-        position: Math.floor(currentTime),
-        duration: Math.floor(duration),
-      }),
+    const progressStr = JSON.stringify({
+      type: "audio",
+      position: Math.floor(currentTime),
+      duration: Math.floor(duration),
     });
+    saveLocalProgress(bookId, progressStr);
+    const body = JSON.stringify({ progress: progressStr });
     const send = () => {
       fetch(`/api/books/${bookId}/progress`, {
         method: "PUT",

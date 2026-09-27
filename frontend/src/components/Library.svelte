@@ -9,6 +9,13 @@
   import BookCard from "./BookCard.svelte";
   import BookEditModal from "./BookEditModal.svelte";
   import PodcastModal from "./PodcastModal.svelte";
+  import {
+    downloadedIds,
+    downloadForOffline,
+    removeDownload,
+    effectiveProgress,
+    flushLocalProgress,
+  } from "../lib/offline.js";
 
   let { onOpenBook } = $props();
 
@@ -24,6 +31,9 @@
   let showPodcasts = $state(false);
   let activeKind = $state("All");
   let showControls = $state(false);
+  let downloaded = $state(new Set());
+  let downloadingIds = $state(new Set());
+  let online = $state(typeof navigator !== "undefined" ? navigator.onLine : true);
 
   // Close the sort/filter menu when clicking outside it.
   $effect(() => {
@@ -84,21 +94,28 @@
     return list;
   });
 
+  const updateOnline = () => (online = navigator.onLine);
+
   onMount(() => {
     darkMode = localStorage.getItem("darkMode") === "true";
     applyDarkMode(darkMode);
     fetchBooks();
+    downloadedIds().then((ids) => (downloaded = ids));
 
     document.addEventListener("dragenter", onDocDragEnter);
     document.addEventListener("dragleave", onDocDragLeave);
     document.addEventListener("dragover", onDocDragOver);
     document.addEventListener("drop", onDocDrop);
+    window.addEventListener("online", updateOnline);
+    window.addEventListener("offline", updateOnline);
 
     return () => {
       document.removeEventListener("dragenter", onDocDragEnter);
       document.removeEventListener("dragleave", onDocDragLeave);
       document.removeEventListener("dragover", onDocDragOver);
       document.removeEventListener("drop", onDocDrop);
+      window.removeEventListener("online", updateOnline);
+      window.removeEventListener("offline", updateOnline);
     };
   });
 
@@ -117,11 +134,35 @@
       const response = await fetch("/api/books");
       const data = await response.json();
       books = Array.isArray(data) ? data : [];
+      flushLocalProgress(books);
     } catch (error) {
       console.error("Failed to fetch books:", error);
       books = [];
     } finally {
       loaded = true;
+    }
+  };
+
+  const toggleDownload = async (book) => {
+    if (downloadingIds.has(book.id)) return;
+    if (downloaded.has(book.id)) {
+      await removeDownload(book.id);
+      const next = new Set(downloaded);
+      next.delete(book.id);
+      downloaded = next;
+      return;
+    }
+    downloadingIds = new Set(downloadingIds).add(book.id);
+    try {
+      await downloadForOffline(book);
+      downloaded = new Set(downloaded).add(book.id);
+    } catch (error) {
+      console.error("Offline download failed:", error);
+      alert("Couldn't download this for offline use.");
+    } finally {
+      const next = new Set(downloadingIds);
+      next.delete(book.id);
+      downloadingIds = next;
     }
   };
 
@@ -194,9 +235,10 @@
   };
 
   const computeProgress = (book) => {
-    if (!book.readingProgress) return 0;
+    const raw = effectiveProgress(book);
+    if (!raw) return 0;
     try {
-      const progress = JSON.parse(book.readingProgress);
+      const progress = JSON.parse(raw);
       if (
         FOLIATE_FORMATS.includes(progress.type) &&
         progress.fraction !== undefined
@@ -304,6 +346,9 @@
       {#if books.length > 0}
         <span class="count">{books.length} {books.length === 1 ? "book" : "books"}</span>
       {/if}
+      {#if !online}
+        <span class="offline-pill" title="You're offline — only downloaded books are available">Offline</span>
+      {/if}
     </div>
     <div class="header-actions">
       {#if books.length > 0}
@@ -377,6 +422,7 @@
         </div>
       {/if}
       <div class="actions-secondary">
+      {#if online}
       <button
         class="upload-btn"
         onclick={triggerUpload}
@@ -428,6 +474,7 @@
           <circle cx="5" cy="19" r="1" />
         </svg>
       </button>
+      {/if}
       <button
         class="icon-btn"
         onclick={toggleDarkMode}
@@ -467,6 +514,10 @@
               onOpen={onOpenBook}
               onDelete={deleteBook}
               onEdit={(b) => (editingBook = b)}
+              downloaded={downloaded.has(book.id)}
+              downloading={downloadingIds.has(book.id)}
+              offline={!online}
+              onToggleDownload={toggleDownload}
             />
           </div>
         {/each}
@@ -485,6 +536,10 @@
           onOpen={onOpenBook}
           onDelete={deleteBook}
           onEdit={(b) => (editingBook = b)}
+          downloaded={downloaded.has(book.id)}
+          downloading={downloadingIds.has(book.id)}
+          offline={!online}
+          onToggleDownload={toggleDownload}
         />
       {/each}
     </div>
@@ -568,6 +623,18 @@
     font-size: 0.85rem;
     color: var(--text-faint);
     font-variant-numeric: tabular-nums;
+  }
+
+  .offline-pill {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    background: var(--tint);
+    border: 1px solid var(--border);
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
   }
 
   .header-actions {

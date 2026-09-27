@@ -9,6 +9,7 @@
   import AudioPlayer from "./AudioPlayer.svelte";
   import TableOfContents from "./TableOfContents.svelte";
   import { FOLIATE_FORMATS, TEXT_FORMATS, AUDIO_FORMATS } from "../lib/constants.js";
+  import { saveLocalProgress, effectiveProgress } from "../lib/offline.js";
   import {
     drawPDFHighlightsForPage,
     applyPDFHighlight,
@@ -139,6 +140,7 @@
 
   let saveTimeout = null;
   const saveProgress = (progress) => {
+    saveLocalProgress(bookId, progress);
     if (saveTimeout) clearTimeout(saveTimeout);
     saveTimeout = setTimeout(async () => {
       try {
@@ -391,9 +393,10 @@
       }
 
       let startPage = 1;
-      if (bookMetadata.readingProgress) {
+      const savedPdf = effectiveProgress(bookMetadata);
+      if (savedPdf) {
         try {
-          const progress = JSON.parse(bookMetadata.readingProgress);
+          const progress = JSON.parse(savedPdf);
           if (progress.type === "pdf" && progress.page) {
             startPage = Math.min(progress.page, totalPages);
           }
@@ -628,9 +631,10 @@
           } catch (e) {
             toc = [];
           }
-          if (bookMetadata.readingProgress) {
+          const savedFoliate = effectiveProgress(bookMetadata);
+          if (savedFoliate) {
             try {
-              const progress = JSON.parse(bookMetadata.readingProgress);
+              const progress = JSON.parse(savedFoliate);
               if (FOLIATE_FORMATS.includes(progress.type) && progress.cfi) {
                 view.goTo(progress.cfi);
                 return;

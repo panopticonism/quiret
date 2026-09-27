@@ -12,7 +12,7 @@ A minimal, low-footprint ebook & audiobook library for your home server.
 - **Covers & metadata** — auto-extracted for every format (chapter markers for M4B), and editable in-app (title, author, cover).
 - **Organized library** — search, sort, filter by type, a "Continue" shelf for in-progress items, and a table-of-contents panel for ebooks and PDFs.
 - **Annotations & progress** — highlights and notes that persist, and your reading/listening position is remembered.
-- **Installable PWA** — add it to your home screen for a full-screen, app-like experience.
+- **Offline-ready PWA** — install it to your home screen, then download books, audiobooks, and podcast episodes to read and listen with no connection (audio still seeks). Great for flights.
 - **Easy imports** — drag-and-drop upload, recursive folder scanning, and a manual rescan button.
 - **Tiny footprint** — ~30MB Docker image; one static Go binary and one SQLite file. No Calibre, no JVM, no Node at runtime — `poppler-utils` is the only system dependency. Designed for a Pi, NAS, or any low-power box.
 
@@ -51,6 +51,7 @@ Your library lives in a Docker volume and persists between restarts.
 5. **Listen** — audiobooks open a player with variable speed, skip, a sleep timer, chapters, and background / lock-screen controls.
 6. **Podcasts** — click the RSS icon, paste a feed URL, and download episodes; save a feed to fetch new episodes later.
 7. **Annotate & edit** — select text to highlight and add notes, and edit a book's title, author, or cover from its card.
+8. **Take it offline** — install the app to your home screen, then use the download button on a book's card to save it for offline reading/listening; a check badge shows what's available without a connection.
 
 ## Development
 

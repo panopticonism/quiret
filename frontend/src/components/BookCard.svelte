@@ -1,15 +1,26 @@
 <script>
   import { AUDIO_FORMATS } from "../lib/constants.js";
 
-  let { book, progress = 0, onOpen, onDelete, onEdit } = $props();
+  let {
+    book,
+    progress = 0,
+    onOpen,
+    onDelete,
+    onEdit,
+    downloaded = false,
+    downloading = false,
+    offline = false,
+    onToggleDownload,
+  } = $props();
 
   const isAudio = $derived(AUDIO_FORMATS.includes(book.fileType));
+  const unavailable = $derived(offline && !downloaded);
   const coverSrc = $derived(
     `/api/books/${book.id}/cover${book._cacheBust ? `?v=${book._cacheBust}` : ""}`,
   );
 </script>
 
-<article class="book-card">
+<article class="book-card" class:unavailable={unavailable}>
   <button
     type="button"
     class="book-card-main"
@@ -40,6 +51,13 @@
           </svg>
         </span>
       {/if}
+      {#if downloaded}
+        <span class="offline-status" aria-label="Available offline" title="Available offline">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 6L9 17l-5-5" />
+          </svg>
+        </span>
+      {/if}
       {#if progress > 0}
         <div class="progress-indicator" aria-label="Reading progress">
           <div class="progress-fill" style="width: {progress}%"></div>
@@ -51,6 +69,31 @@
       <p>{book.author || "Unknown"}</p>
     </div>
   </button>
+  {#if onToggleDownload}
+    <button
+      type="button"
+      class="offline-btn"
+      class:busy={downloading}
+      onclick={() => onToggleDownload(book)}
+      disabled={downloading}
+      aria-label={downloaded ? "Remove offline download" : "Download for offline"}
+      title={downloaded ? "Available offline — click to remove" : "Download for offline"}
+    >
+      {#if downloading}
+        <span class="mini-spinner"></span>
+      {:else if downloaded}
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 6L9 17l-5-5" />
+        </svg>
+      {:else}
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3v12" />
+          <path d="M7 10l5 5 5-5" />
+          <path d="M5 20h14" />
+        </svg>
+      {/if}
+    </button>
+  {/if}
   {#if onEdit}
     <button
       type="button"
@@ -86,11 +129,19 @@
 <style>
   .book-card {
     position: relative;
-    transition: transform 0.15s;
+    transition: transform 0.15s, opacity 0.15s;
   }
 
   .book-card:hover {
     transform: translateY(-2px);
+  }
+
+  .book-card.unavailable {
+    opacity: 0.45;
+  }
+
+  .book-card.unavailable:hover {
+    opacity: 0.6;
   }
 
   .book-card-main {
@@ -237,6 +288,71 @@
 
   .delete-btn:hover {
     background: var(--danger);
+  }
+
+  .offline-btn {
+    position: absolute;
+    top: 0.4rem;
+    right: 4.4rem;
+    background: var(--overlay-button-bg);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .book-card:hover .offline-btn,
+  .offline-btn:focus-visible,
+  .offline-btn.busy {
+    opacity: 1;
+  }
+
+  .offline-btn:hover {
+    background: var(--accent);
+  }
+
+  .offline-btn:disabled {
+    cursor: default;
+  }
+
+  /* Persistent corner badge marking a book as available offline. */
+  .offline-status {
+    position: absolute;
+    bottom: 0.5rem;
+    right: 0.5rem;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .mini-spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: card-spin 0.7s linear infinite;
+    display: block;
+  }
+
+  @keyframes card-spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .edit-btn {
