@@ -8,13 +8,29 @@
 //   cached full response so audio seeking works offline. Non-downloaded files
 //   pass through to the network.
 
-const SHELL_CACHE = "quiret-shell-v1";
+const SHELL_CACHE = "quiret-shell-v2";
 const API_CACHE = "quiret-api-v1";
 const FILE_CACHE = "quiret-files-v1";
 const CURRENT = new Set([SHELL_CACHE, API_CACHE, FILE_CACHE]);
 
-self.addEventListener("install", () => {
-  self.skipWaiting();
+// Precache the full app shell on install so lazily-imported chunks (e.g.
+// foliate-js format modules) are available offline even if never opened online.
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    (async () => {
+      try {
+        const res = await fetch("/precache-manifest.json", { cache: "no-store" });
+        if (res.ok) {
+          const urls = await res.json();
+          const cache = await caches.open(SHELL_CACHE);
+          await Promise.allSettled(urls.map((u) => cache.add(u).catch(() => {})));
+        }
+      } catch {
+        // Best-effort: runtime caching still covers assets fetched while online.
+      }
+      await self.skipWaiting();
+    })(),
+  );
 });
 
 self.addEventListener("activate", (event) => {
