@@ -109,11 +109,95 @@ async function staleWhileRevalidate(req, cacheName) {
   return cached || (await fetching) || Response.error();
 }
 
+const MIME = {
+  mp3: "audio/mpeg",
+  m4b: "audio/mp4",
+  m4a: "audio/mp4",
+  aac: "audio/aac",
+  ogg: "audio/ogg",
+  opus: "audio/ogg",
+  epub: "application/epub+zip",
+  pdf: "application/pdf",
+  fb2: "application/x-fictionbook+xml",
+  cbz: "application/vnd.comicbook+zip",
+};
+
+async function offlineContentType(id) {
+  try {
+    const apiCache = await caches.open(API_CACHE);
+    const metaRes = await apiCache.match("/api/books/" + id);
+    if (metaRes) {
+      const meta = await metaRes.json();
+      return MIME[meta.fileType] || "application/octet-stream";
+    }
+  } catch {}
+  return "application/octet-stream";
+}
+
+async function opfsFile(id) {
+  try {
+    if (!(self.navigator && navigator.storage && navigator.storage.getDirectory))
+      return null;
+    const root = await navigator.storage.getDirectory();
+    const dir = await root.getDirectoryHandle("books").catch(() => null);
+    if (!dir) return null;
+    const fh = await dir.getFileHandle(id).catch(() => null);
+    return fh ? await fh.getFile() : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseRange(rangeHeader, total) {
+  const m = /bytes=(\d*)-(\d*)/.exec(rangeHeader || "");
+  let start = m && m[1] ? parseInt(m[1], 10) : 0;
+  let end = m && m[2] ? parseInt(m[2], 10) : total - 1;
+  if (Number.isNaN(start)) start = 0;
+  if (Number.isNaN(end) || end > total - 1) end = total - 1;
+  return { start, end };
+}
+
 async function handleFile(req, url) {
+  const id = (/^\/api\/books\/([^/]+)\/file$/.exec(url.pathname) || [])[1];
+  const range = req.headers.get("range");
+
+  // Prefer OPFS (streams large media from disk without buffering).
+  const file = id ? await opfsFile(id) : null;
+  if (file) {
+    const type = await offlineContentType(id);
+    const total = file.size;
+    if (!range) {
+      return new Response(file, {
+        headers: {
+          "Content-Type": type,
+          "Content-Length": String(total),
+          "Accept-Ranges": "bytes",
+        },
+      });
+    }
+    const { start, end } = parseRange(range, total);
+    if (start > end || start >= total) {
+      return new Response(null, {
+        status: 416,
+        headers: { "Content-Range": `bytes */${total}` },
+      });
+    }
+    return new Response(file.slice(start, end + 1), {
+      status: 206,
+      statusText: "Partial Content",
+      headers: {
+        "Content-Type": type,
+        "Content-Range": `bytes ${start}-${end}/${total}`,
+        "Content-Length": String(end - start + 1),
+        "Accept-Ranges": "bytes",
+      },
+    });
+  }
+
+  // Cache API fallback (small files / browsers without writable OPFS).
   const cache = await caches.open(FILE_CACHE);
   const cached = await cache.match(url.pathname);
   if (!cached) return fetch(req); // not downloaded — online passthrough
-  const range = req.headers.get("range");
   if (!range) return cached.clone();
   return buildRange(cached, range);
 }

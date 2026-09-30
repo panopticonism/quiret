@@ -10,6 +10,13 @@ if ('serviceWorker' in navigator) {
   })
 }
 
+// Ask the browser to keep offline downloads from being evicted.
+if (navigator.storage?.persist) {
+  navigator.storage.persisted().then((p) => {
+    if (!p) navigator.storage.persist().catch(() => {})
+  }).catch(() => {})
+}
+
 const app = mount(App, {
   target: document.getElementById('app'),
 })
