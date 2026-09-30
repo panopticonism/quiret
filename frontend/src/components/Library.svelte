@@ -33,6 +33,7 @@
   let showControls = $state(false);
   let downloaded = $state(new Set());
   let downloadingIds = $state(new Set());
+  let downloadProgress = $state(new Map());
   let online = $state(typeof navigator !== "undefined" ? navigator.onLine : true);
 
   // Close the sort/filter menu when clicking outside it.
@@ -153,16 +154,22 @@
       return;
     }
     downloadingIds = new Set(downloadingIds).add(book.id);
+    downloadProgress = new Map(downloadProgress).set(book.id, 0);
     try {
-      await downloadForOffline(book);
+      await downloadForOffline(book, (frac) => {
+        downloadProgress = new Map(downloadProgress).set(book.id, frac);
+      });
       downloaded = new Set(downloaded).add(book.id);
     } catch (error) {
       console.error("Offline download failed:", error);
-      alert("Couldn't download this for offline use.");
+      alert(error?.message || "Couldn't download this for offline use.");
     } finally {
-      const next = new Set(downloadingIds);
-      next.delete(book.id);
-      downloadingIds = next;
+      const nextIds = new Set(downloadingIds);
+      nextIds.delete(book.id);
+      downloadingIds = nextIds;
+      const nextProg = new Map(downloadProgress);
+      nextProg.delete(book.id);
+      downloadProgress = nextProg;
     }
   };
 
@@ -516,6 +523,7 @@
               onEdit={(b) => (editingBook = b)}
               downloaded={downloaded.has(book.id)}
               downloading={downloadingIds.has(book.id)}
+              progressPct={downloadProgress.get(book.id)}
               offline={!online}
               onToggleDownload={toggleDownload}
             />
@@ -538,6 +546,7 @@
           onEdit={(b) => (editingBook = b)}
           downloaded={downloaded.has(book.id)}
           downloading={downloadingIds.has(book.id)}
+          progressPct={downloadProgress.get(book.id)}
           offline={!online}
           onToggleDownload={toggleDownload}
         />

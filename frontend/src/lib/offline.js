@@ -8,14 +8,71 @@ const hasCaches = () => typeof caches !== "undefined";
 
 const fileKey = (id) => `/api/books/${id}/file`;
 
-// Download a book (and its metadata/cover/chapters) into the cache for offline use.
-export async function downloadForOffline(book) {
-  if (!hasCaches()) throw new Error("Offline storage unavailable");
-  const fileCache = await caches.open(FILE_CACHE);
+const fmtMB = (bytes) => `${Math.round(bytes / (1024 * 1024))} MB`;
 
+// Download a book (and its metadata/cover/chapters) into the cache for offline
+// use. Streams the file to storage (so large audiobooks don't buffer in memory)
+// and reports progress via onProgress(fraction 0..1).
+export async function downloadForOffline(book, onProgress) {
+  if (!hasCaches()) {
+    throw new Error("Offline storage isn't available in this browser.");
+  }
+
+  // Pre-flight: make sure the file plausibly fits, so we fail clearly instead of
+  // spinning forever / crashing the tab on a device that's low on space.
+  if (book.fileSize && navigator.storage?.estimate) {
+    try {
+      const { quota = 0, usage = 0 } = await navigator.storage.estimate();
+      const free = quota - usage;
+      if (free && book.fileSize > free - 10 * 1024 * 1024) {
+        throw new Error(
+          `Not enough offline storage — needs ${fmtMB(book.fileSize)}, only ${fmtMB(Math.max(free, 0))} free.`,
+        );
+      }
+    } catch (e) {
+      if (e.message?.startsWith("Not enough")) throw e;
+      // estimate() unsupported/failed — proceed and rely on the quota error below.
+    }
+  }
+
+  const fileCache = await caches.open(FILE_CACHE);
   const res = await fetch(fileKey(book.id));
-  if (!res.ok) throw new Error("Download failed");
-  await fileCache.put(fileKey(book.id), res);
+  if (!res.ok || !res.body) throw new Error("Download failed");
+
+  const total = Number(res.headers.get("Content-Length")) || book.fileSize || 0;
+  const contentType = res.headers.get("Content-Type") || "application/octet-stream";
+  let loaded = 0;
+  const reader = res.body.getReader();
+  const stream = new ReadableStream({
+    async pull(controller) {
+      const { done, value } = await reader.read();
+      if (done) {
+        controller.close();
+        return;
+      }
+      loaded += value.byteLength;
+      if (onProgress && total) onProgress(Math.min(loaded / total, 1));
+      controller.enqueue(value);
+    },
+    cancel(reason) {
+      reader.cancel(reason);
+    },
+  });
+
+  try {
+    await fileCache.put(
+      fileKey(book.id),
+      new Response(stream, {
+        headers: { "Content-Type": contentType, "Content-Length": String(total) },
+      }),
+    );
+  } catch (e) {
+    await fileCache.delete(fileKey(book.id)).catch(() => {});
+    if (e && (e.name === "QuotaExceededError" || /quota/i.test(e.message || ""))) {
+      throw new Error("Ran out of offline storage while downloading.");
+    }
+    throw e;
+  }
 
   const apiCache = await caches.open(API_CACHE);
   const extras = [`/api/books/${book.id}`, `/api/books/${book.id}/chapters`];

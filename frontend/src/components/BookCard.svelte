@@ -9,6 +9,7 @@
     onEdit,
     downloaded = false,
     downloading = false,
+    progressPct = undefined,
     offline = false,
     onToggleDownload,
   } = $props();
@@ -80,7 +81,11 @@
       title={downloaded ? "Available offline — click to remove" : "Download for offline"}
     >
       {#if downloading}
-        <span class="mini-spinner"></span>
+        {#if progressPct != null && progressPct > 0}
+          <span class="dl-pct">{Math.round(progressPct * 100)}</span>
+        {:else}
+          <span class="mini-spinner"></span>
+        {/if}
       {:else if downloaded}
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
           <path d="M20 6L9 17l-5-5" />
@@ -337,6 +342,13 @@
     align-items: center;
     justify-content: center;
     box-shadow: var(--shadow-sm);
+  }
+
+  .dl-pct {
+    font-size: 0.58rem;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
   }
 
   .mini-spinner {
