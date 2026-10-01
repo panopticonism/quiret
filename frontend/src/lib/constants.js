@@ -1,6 +1,7 @@
 export const FOLIATE_FORMATS = ["epub", "fb2", "cbz"];
 export const TEXT_FORMATS = ["epub", "fb2"];
 export const AUDIO_FORMATS = ["mp3", "m4b", "m4a", "aac", "ogg", "opus"];
+export const VIDEO_FORMATS = ["mp4", "m4v", "webm", "mov", "mkv"];
 
 export const SUPPORTED_EXTENSIONS = [
   ".epub",
@@ -13,6 +14,11 @@ export const SUPPORTED_EXTENSIONS = [
   ".aac",
   ".ogg",
   ".opus",
+  ".mp4",
+  ".m4v",
+  ".webm",
+  ".mov",
+  ".mkv",
 ];
 
 export const FILE_ACCEPT = SUPPORTED_EXTENSIONS.join(",");

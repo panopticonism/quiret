@@ -75,6 +75,11 @@ func UploadBook(w http.ResponseWriter, r *http.Request) {
 		".aac":  "aac",
 		".ogg":  "ogg",
 		".opus": "opus",
+		".mp4":  "mp4",
+		".m4v":  "m4v",
+		".webm": "webm",
+		".mov":  "mov",
+		".mkv":  "mkv",
 	}
 	fileType, ok := supportedTypes[fileExt]
 	if !ok {
@@ -323,6 +328,11 @@ func ServeBookFile(w http.ResponseWriter, r *http.Request) {
 		"aac":  "audio/aac",
 		"ogg":  "audio/ogg",
 		"opus": "audio/ogg",
+		"mp4":  "video/mp4",
+		"m4v":  "video/mp4",
+		"webm": "video/webm",
+		"mov":  "video/quicktime",
+		"mkv":  "video/x-matroska",
 	}
 	if ct, ok := contentTypes[fileType]; ok {
 		w.Header().Set("Content-Type", ct)

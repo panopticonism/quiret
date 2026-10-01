@@ -6,7 +6,7 @@ A minimal, low-footprint ebook & audiobook library for your home server.
 
 ## Features
 
-- **Reads everything** — EPUB, FB2, and CBZ (via Foliate-js), PDF (via PDF.js), and MP3 / M4B / M4A / AAC / OGG / Opus audiobooks in a built-in player.
+- **Reads & plays everything** — EPUB, FB2, and CBZ (via Foliate-js), PDF (via PDF.js), MP3 / M4B / M4A / AAC / OGG / Opus audiobooks, and MP4 / WebM / M4V video, all in a built-in player.
 - **Audiobook player** — resume, variable speed, skip, a sleep timer, embedded chapters (M4B), and lock-screen / background playback via the Media Session API.
 - **Podcasts** — paste an RSS feed to browse and download episodes into your library; save feeds as subscriptions and pull new episodes whenever you like.
 - **Covers & metadata** — auto-extracted for every format (chapter markers for M4B), and editable in-app (title, author, cover).

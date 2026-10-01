@@ -1,5 +1,5 @@
 <script>
-  import { AUDIO_FORMATS } from "../lib/constants.js";
+  import { AUDIO_FORMATS, VIDEO_FORMATS } from "../lib/constants.js";
 
   let {
     book,
@@ -15,6 +15,7 @@
   } = $props();
 
   const isAudio = $derived(AUDIO_FORMATS.includes(book.fileType));
+  const isVideo = $derived(VIDEO_FORMATS.includes(book.fileType));
   const unavailable = $derived(offline && !downloaded);
   const coverSrc = $derived(
     `/api/books/${book.id}/cover${book._cacheBust ? `?v=${book._cacheBust}` : ""}`,
@@ -49,6 +50,12 @@
             <path d="M5 14v-2a7 7 0 0 1 14 0v2" />
             <path d="M7 14v4a1 1 0 0 1-1 1 3 3 0 0 1-3-3 3 3 0 0 1 3-3 1 1 0 0 1 1 1z" fill="currentColor" stroke="none" />
             <path d="M17 14v4a1 1 0 0 0 1 1 3 3 0 0 0 3-3 3 3 0 0 0-3-3 1 1 0 0 0-1 1z" fill="currentColor" stroke="none" />
+          </svg>
+        </span>
+      {:else if isVideo}
+        <span class="audio-badge" aria-label="Video">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8 5v14l11-7z" />
           </svg>
         </span>
       {/if}

@@ -23,6 +23,11 @@ var supportedBookTypes = map[string]string{
 	".aac":  "aac",
 	".ogg":  "ogg",
 	".opus": "opus",
+	".mp4":  "mp4",
+	".m4v":  "m4v",
+	".webm": "webm",
+	".mov":  "mov",
+	".mkv":  "mkv",
 }
 
 // ScanDirectory walks a directory tree for book files and adds new ones to the

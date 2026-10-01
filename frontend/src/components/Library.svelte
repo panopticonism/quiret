@@ -5,6 +5,7 @@
     FILE_ACCEPT,
     FOLIATE_FORMATS,
     AUDIO_FORMATS,
+    VIDEO_FORMATS,
   } from "../lib/constants.js";
   import BookCard from "./BookCard.svelte";
   import BookEditModal from "./BookEditModal.svelte";
@@ -48,12 +49,13 @@
 
   const isDragging = $derived(dragDepth > 0);
 
-  const KIND_ORDER = ["Ebooks", "Audiobooks", "Podcasts", "PDFs", "Comics"];
+  const KIND_ORDER = ["Ebooks", "Audiobooks", "Podcasts", "Videos", "PDFs", "Comics"];
 
   const kindOf = (book) => {
     const t = book.fileType;
     if (AUDIO_FORMATS.includes(t))
       return book.source === "podcast" ? "Podcasts" : "Audiobooks";
+    if (VIDEO_FORMATS.includes(t)) return "Videos";
     if (t === "pdf") return "PDFs";
     if (t === "cbz") return "Comics";
     return "Ebooks";
@@ -211,7 +213,7 @@
       filename.endsWith(ext),
     );
     if (!isSupported) {
-      alert("Supported formats: EPUB, PDF, FB2, CBZ, and audiobooks (MP3, M4B, M4A)");
+      alert("Supported formats: EPUB, PDF, FB2, CBZ, audiobooks (MP3, M4B, M4A), and video (MP4, WebM, M4V)");
       return;
     }
     await uploadBook(file);
@@ -253,7 +255,11 @@
         return Math.round(progress.fraction * 100);
       } else if (progress.type === "pdf" && progress.page && progress.totalPages) {
         return Math.round((progress.page / progress.totalPages) * 100);
-      } else if (progress.type === "audio" && progress.position && progress.duration) {
+      } else if (
+        (progress.type === "audio" || progress.type === "video") &&
+        progress.position &&
+        progress.duration
+      ) {
         return Math.round((progress.position / progress.duration) * 100);
       }
     } catch (e) {

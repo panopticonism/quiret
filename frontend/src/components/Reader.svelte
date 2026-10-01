@@ -7,8 +7,14 @@
   import AnnotationPanel from "./AnnotationPanel.svelte";
   import AnnotationsList from "./AnnotationsList.svelte";
   import AudioPlayer from "./AudioPlayer.svelte";
+  import VideoPlayer from "./VideoPlayer.svelte";
   import TableOfContents from "./TableOfContents.svelte";
-  import { FOLIATE_FORMATS, TEXT_FORMATS, AUDIO_FORMATS } from "../lib/constants.js";
+  import {
+    FOLIATE_FORMATS,
+    TEXT_FORMATS,
+    AUDIO_FORMATS,
+    VIDEO_FORMATS,
+  } from "../lib/constants.js";
   import { saveLocalProgress, effectiveProgress } from "../lib/offline.js";
   import {
     drawPDFHighlightsForPage,
@@ -30,6 +36,7 @@
   let bookBlob = $state(null);
   let bookMetadata = $state(null);
   let isAudio = $state(false);
+  let isVideo = $state(false);
   let pdfDoc = $state(null);
   let currentPage = $state(1);
   let totalPages = $state(0);
@@ -366,7 +373,7 @@
   };
 
   const handleKeyPress = (event) => {
-    if (isAudio) return; // AudioPlayer handles its own keyboard shortcuts
+    if (isAudio || isVideo) return; // media players handle their own shortcuts
     if (event.key === "Escape") {
       if (showAnnotationPanel) closeAnnotationPanel();
       else if (showAnnotationsList) showAnnotationsList = false;
@@ -486,10 +493,15 @@
       if (!metadataResponse.ok) throw new Error("Failed to load book metadata");
       bookMetadata = await metadataResponse.json();
 
-      // Audiobooks stream directly via the <audio> element (range requests),
+      // Audio/video stream directly via their media elements (range requests),
       // so skip the blob download and text/PDF rendering machinery entirely.
       if (AUDIO_FORMATS.includes(bookMetadata.fileType)) {
         isAudio = true;
+        loading = false;
+        return;
+      }
+      if (VIDEO_FORMATS.includes(bookMetadata.fileType)) {
+        isVideo = true;
         loading = false;
         return;
       }
@@ -682,6 +694,8 @@
 
 {#if isAudio}
   <AudioPlayer {bookId} metadata={bookMetadata} {onClose} />
+{:else if isVideo}
+  <VideoPlayer {bookId} metadata={bookMetadata} {onClose} />
 {:else}
 <div class="reader-wrapper">
   <div
