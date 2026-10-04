@@ -71,7 +71,7 @@
   $effect(() => {
     const valid =
       activeKind === "All" ||
-      (activeKind === "Finished"
+      (activeKind === "Finished" || activeKind === "Unfinished"
         ? finishedBooks.length > 0
         : presentKinds.includes(activeKind));
     if (!valid) activeKind = "All";
@@ -82,6 +82,8 @@
     let list = books;
     if (activeKind === "Finished") {
       list = list.filter((b) => (progressByBookId.get(b.id) ?? 0) >= 100);
+    } else if (activeKind === "Unfinished") {
+      list = list.filter((b) => (progressByBookId.get(b.id) ?? 0) < 100);
     } else if (activeKind !== "All") {
       list = list.filter((b) => kindOf(b) === activeKind);
     }
@@ -436,6 +438,16 @@
                   </button>
                 {/each}
                 {#if finishedBooks.length > 0}
+                  <button
+                    class="menu-option"
+                    class:selected={activeKind === "Unfinished"}
+                    onclick={() => (activeKind = "Unfinished")}
+                  >
+                    <span>Unfinished</span>
+                    {#if activeKind === "Unfinished"}
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                    {/if}
+                  </button>
                   <button
                     class="menu-option"
                     class:selected={activeKind === "Finished"}
