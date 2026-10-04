@@ -66,17 +66,25 @@
     return KIND_ORDER.filter((k) => set.has(k));
   });
 
-  // Reset the filter if the active kind disappears (e.g. last of a kind deleted).
+  // Reset the filter if the active option disappears (e.g. last of a kind deleted,
+  // or nothing finished anymore).
   $effect(() => {
-    if (activeKind !== "All" && !presentKinds.includes(activeKind)) {
-      activeKind = "All";
-    }
+    const valid =
+      activeKind === "All" ||
+      (activeKind === "Finished"
+        ? finishedBooks.length > 0
+        : presentKinds.includes(activeKind));
+    if (!valid) activeKind = "All";
   });
 
   const filteredBooks = $derived.by(() => {
     const q = searchQuery.trim().toLowerCase();
     let list = books;
-    if (activeKind !== "All") list = list.filter((b) => kindOf(b) === activeKind);
+    if (activeKind === "Finished") {
+      list = list.filter((b) => (progressByBookId.get(b.id) ?? 0) >= 100);
+    } else if (activeKind !== "All") {
+      list = list.filter((b) => kindOf(b) === activeKind);
+    }
     if (q) {
       list = list.filter(
         (b) =>
@@ -413,8 +421,8 @@
           </button>
           {#if showControls}
             <div class="controls-menu" role="menu">
-              {#if presentKinds.length > 1}
-                <span class="menu-heading">Type</span>
+              {#if presentKinds.length > 1 || finishedBooks.length > 0}
+                <span class="menu-heading">Show</span>
                 {#each ["All", ...presentKinds] as kind (kind)}
                   <button
                     class="menu-option"
@@ -427,6 +435,18 @@
                     {/if}
                   </button>
                 {/each}
+                {#if finishedBooks.length > 0}
+                  <button
+                    class="menu-option"
+                    class:selected={activeKind === "Finished"}
+                    onclick={() => (activeKind = "Finished")}
+                  >
+                    <span>Finished</span>
+                    {#if activeKind === "Finished"}
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                    {/if}
+                  </button>
+                {/if}
                 <div class="menu-divider"></div>
               {/if}
               <span class="menu-heading">Sort by</span>
@@ -533,30 +553,6 @@
       <h2 class="section-title">Continue</h2>
       <div class="continue-row">
         {#each continueBooks as book (book.id)}
-          <div class="continue-item">
-            <BookCard
-              {book}
-              progress={progressByBookId.get(book.id) ?? 0}
-              onOpen={onOpenBook}
-              onDelete={deleteBook}
-              onEdit={(b) => (editingBook = b)}
-              downloaded={downloaded.has(book.id)}
-              downloading={downloadingIds.has(book.id)}
-              progressPct={downloadProgress.get(book.id)}
-              offline={!online}
-              onToggleDownload={toggleDownload}
-            />
-          </div>
-        {/each}
-      </div>
-    </section>
-  {/if}
-
-  {#if !searchQuery.trim() && activeKind === "All" && finishedBooks.length > 0}
-    <section class="continue">
-      <h2 class="section-title">Finished</h2>
-      <div class="continue-row">
-        {#each finishedBooks as book (book.id)}
           <div class="continue-item">
             <BookCard
               {book}
