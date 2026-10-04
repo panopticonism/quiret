@@ -289,6 +289,19 @@
     return items.slice(0, 12).map((x) => x.book);
   });
 
+  // Finished books (reached the end), most recently finished first.
+  const finishedBooks = $derived.by(() => {
+    const items = books
+      .map((book) => ({ book, progress: progressByBookId.get(book.id) ?? 0 }))
+      .filter((x) => x.progress >= 100);
+    items.sort((a, b) => {
+      const ta = a.book.progressUpdatedAt ? Date.parse(a.book.progressUpdatedAt) : 0;
+      const tb = b.book.progressUpdatedAt ? Date.parse(b.book.progressUpdatedAt) : 0;
+      return tb - ta;
+    });
+    return items.map((x) => x.book);
+  });
+
   const deleteBook = async (bookId, bookTitle) => {
     if (!confirm(`Delete "${bookTitle}"?`)) return;
 
@@ -520,6 +533,30 @@
       <h2 class="section-title">Continue</h2>
       <div class="continue-row">
         {#each continueBooks as book (book.id)}
+          <div class="continue-item">
+            <BookCard
+              {book}
+              progress={progressByBookId.get(book.id) ?? 0}
+              onOpen={onOpenBook}
+              onDelete={deleteBook}
+              onEdit={(b) => (editingBook = b)}
+              downloaded={downloaded.has(book.id)}
+              downloading={downloadingIds.has(book.id)}
+              progressPct={downloadProgress.get(book.id)}
+              offline={!online}
+              onToggleDownload={toggleDownload}
+            />
+          </div>
+        {/each}
+      </div>
+    </section>
+  {/if}
+
+  {#if !searchQuery.trim() && activeKind === "All" && finishedBooks.length > 0}
+    <section class="continue">
+      <h2 class="section-title">Finished</h2>
+      <div class="continue-row">
+        {#each finishedBooks as book (book.id)}
           <div class="continue-item">
             <BookCard
               {book}
