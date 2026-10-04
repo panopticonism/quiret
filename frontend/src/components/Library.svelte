@@ -95,17 +95,18 @@
           b.author?.toLowerCase().includes(q),
       );
     }
-    if (sortBy === "title") {
-      return [...list].sort((a, b) =>
-        (a.title || "").localeCompare(b.title || ""),
-      );
-    }
-    if (sortBy === "author") {
-      return [...list].sort((a, b) =>
-        (a.author || "").localeCompare(b.author || ""),
-      );
-    }
-    return list;
+    // Finished items always sink to the bottom; the chosen sort orders within
+    // each group (and a stable sort preserves "Recently added" order there).
+    const finishedScore = (b) => ((progressByBookId.get(b.id) ?? 0) >= 100 ? 1 : 0);
+    const secondary =
+      sortBy === "title"
+        ? (a, b) => (a.title || "").localeCompare(b.title || "")
+        : sortBy === "author"
+          ? (a, b) => (a.author || "").localeCompare(b.author || "")
+          : () => 0;
+    return [...list].sort(
+      (a, b) => finishedScore(a) - finishedScore(b) || secondary(a, b),
+    );
   });
 
   const updateOnline = () => (online = navigator.onLine);
