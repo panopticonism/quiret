@@ -30,7 +30,7 @@
   let dragDepth = $state(0);
   let editingBook = $state(null);
   let showPodcasts = $state(false);
-  let activeKind = $state("All");
+  let activeKind = $state("Unfinished");
   let showControls = $state(false);
   let downloaded = $state(new Set());
   let downloadingIds = $state(new Set());
@@ -69,6 +69,7 @@
   // Reset the filter if the active option disappears (e.g. last of a kind deleted,
   // or nothing finished anymore).
   $effect(() => {
+    if (!loaded) return; // don't reset the default before the library has loaded
     const valid =
       activeKind === "All" ||
       (activeKind === "Finished" || activeKind === "Unfinished"
@@ -404,7 +405,7 @@
         <div class="controls-wrap">
           <button
             class="icon-btn"
-            class:active={activeKind !== "All" || sortBy !== "added"}
+            class:active={(activeKind !== "All" && activeKind !== "Unfinished") || sortBy !== "added"}
             onclick={() => (showControls = !showControls)}
             aria-label="Sort and filter"
             aria-expanded={showControls}
@@ -560,7 +561,7 @@
     </div>
   </header>
 
-  {#if !searchQuery.trim() && activeKind === "All" && continueBooks.length > 0}
+  {#if !searchQuery.trim() && (activeKind === "All" || activeKind === "Unfinished") && continueBooks.length > 0}
     <section class="continue">
       <h2 class="section-title">Continue</h2>
       <div class="continue-row">
@@ -605,7 +606,17 @@
     </div>
   {:else if books.length > 0}
     <div class="empty-state">
-      <p>No books match "{searchQuery}"</p>
+      <p>
+        {#if searchQuery.trim()}
+          No books match "{searchQuery}"
+        {:else if activeKind === "Unfinished"}
+          You're all caught up — nothing unfinished.
+        {:else if activeKind === "Finished"}
+          Nothing finished yet.
+        {:else}
+          Nothing here.
+        {/if}
+      </p>
     </div>
   {:else}
     <div class="empty-state empty-state-onboard">
