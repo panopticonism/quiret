@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import {
     SUPPORTED_EXTENSIONS,
     FILE_ACCEPT,
@@ -18,7 +18,7 @@
     flushLocalProgress,
   } from "../lib/offline.js";
 
-  let { onOpenBook } = $props();
+  let { onOpenBook, initialScroll = 0 } = $props();
 
   let books = $state([]);
   let loaded = $state(false);
@@ -114,7 +114,16 @@
   onMount(() => {
     darkMode = localStorage.getItem("darkMode") === "true";
     applyDarkMode(darkMode);
-    fetchBooks();
+    fetchBooks().then(async () => {
+      // Returning from a book shouldn't jump to the top: restore the scroll
+      // position the library had when the book was opened. Covers reserve
+      // their space via aspect-ratio, so layout height is stable before images
+      // load and the target offset is correct.
+      if (initialScroll > 0) {
+        await tick();
+        requestAnimationFrame(() => window.scrollTo(0, initialScroll));
+      }
+    });
     downloadedIds().then((ids) => (downloaded = ids));
 
     document.addEventListener("dragenter", onDocDragEnter);

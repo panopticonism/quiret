@@ -5,6 +5,7 @@
 
   let currentView = $state("library");
   let selectedBookId = $state(null);
+  let libraryScroll = $state(0);
 
   onMount(() => {
     updateFromURL();
@@ -30,6 +31,7 @@
   };
 
   const openBook = (bookId) => {
+    libraryScroll = window.scrollY;
     selectedBookId = bookId;
     currentView = "reader";
     window.history.pushState({}, "", `/book/${bookId}`);
@@ -43,7 +45,7 @@
 </script>
 
 {#if currentView === "library"}
-  <Library onOpenBook={openBook} />
+  <Library onOpenBook={openBook} initialScroll={libraryScroll} />
 {:else if currentView === "reader"}
   <Reader bookId={selectedBookId} onClose={closeReader} />
 {/if}
