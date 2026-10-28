@@ -407,8 +407,8 @@ func DeleteBook(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	bookID := vars["id"]
 
-	var coverPath string
-	err := db.DB.QueryRow("SELECT cover_path FROM books WHERE id = ?", bookID).Scan(&coverPath)
+	var coverPath, source sql.NullString
+	err := db.DB.QueryRow("SELECT cover_path, source FROM books WHERE id = ?", bookID).Scan(&coverPath, &source)
 	if err != nil {
 		http.Error(w, "Book not found", http.StatusNotFound)
 		return
@@ -420,9 +420,17 @@ func DeleteBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if coverPath != "" {
-		if err := os.Remove(coverPath); err != nil {
-			log.Printf("Warning: failed to delete cover file %s: %v", coverPath, err)
+	if coverPath.String != "" {
+		if err := os.Remove(coverPath.String); err != nil {
+			log.Printf("Warning: failed to delete cover file %s: %v", coverPath.String, err)
+		}
+	}
+
+	// Podcast episodes are downloaded into the app's own storage, so deleting
+	// one removes its audio too. Other books' files are left alone.
+	if source.String == "podcast" {
+		if err := os.RemoveAll(filepath.Join(DataPath, "books", bookID)); err != nil {
+			log.Printf("Warning: failed to delete podcast episode %s: %v", bookID, err)
 		}
 	}
 

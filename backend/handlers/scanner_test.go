@@ -31,6 +31,11 @@ func TestScanDirectoryRecursive(t *testing.T) {
 	os.MkdirAll(hidden, 0755)
 	os.WriteFile(filepath.Join(hidden, "ignore.mp3"), []byte("x"), 0644)
 
+	// An archived folder (any case, any depth) whose contents must be skipped.
+	archive := filepath.Join(root, "Some Show", "Archived")
+	os.MkdirAll(archive, 0755)
+	os.WriteFile(filepath.Join(archive, "old.mp3"), []byte("x"), 0644)
+
 	// An unsupported file that must be ignored.
 	os.WriteFile(filepath.Join(root, "notes.txt"), []byte("hi"), 0644)
 
