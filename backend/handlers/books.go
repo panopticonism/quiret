@@ -253,16 +253,42 @@ func SaveProgress(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
+	if payload.Progress == "" {
+		http.Error(w, "Missing progress", http.StatusBadRequest)
+		return
+	}
 
-	_, err := db.DB.Exec("UPDATE books SET reading_progress = ?, progress_updated_at = ? WHERE id = ?", payload.Progress, time.Now(), bookID)
+	res, err := db.DB.Exec("UPDATE books SET reading_progress = ?, progress_updated_at = ? WHERE id = ?", payload.Progress, time.Now().UTC(), bookID)
 	if err != nil {
 		log.Printf("SaveProgress DB error for book %s: %v", bookID, err)
 		http.Error(w, "Failed to save progress", http.StatusInternalServerError)
 		return
 	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		http.Error(w, "Book not found", http.StatusNotFound)
+		return
+	}
 
+	// Read the timestamp back rather than returning the one we just generated:
+	// the client pairs it with the value from GET /api/books to tell "the server
+	// has exactly this" from "someone else has since stored something else", so
+	// it has to be the same string that listing will report.
+	var storedAt sql.NullTime
+	if err := db.DB.QueryRow("SELECT progress_updated_at FROM books WHERE id = ?", bookID).Scan(&storedAt); err != nil {
+		log.Printf("SaveProgress read-back error for book %s: %v", bookID, err)
+	}
+
+	resp := struct {
+		Status            string     `json:"status"`
+		ProgressUpdatedAt *time.Time `json:"progressUpdatedAt,omitempty"`
+	}{Status: "ok"}
+	if storedAt.Valid {
+		resp.ProgressUpdatedAt = &storedAt.Time
+	}
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	json.NewEncoder(w).Encode(resp)
 }
 
 func UpdateBook(w http.ResponseWriter, r *http.Request) {

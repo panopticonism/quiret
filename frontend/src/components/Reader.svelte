@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import "foliate-js/view.js";
   import { Overlayer } from "foliate-js/overlayer.js";
   import * as pdfjsLib from "pdfjs-dist";
@@ -15,7 +15,7 @@
     AUDIO_FORMATS,
     VIDEO_FORMATS,
   } from "../lib/constants.js";
-  import { saveLocalProgress, effectiveProgress } from "../lib/offline.js";
+  import { saveLocalProgress, effectiveProgress, pushProgress } from "../lib/offline.js";
   import {
     drawPDFHighlightsForPage,
     applyPDFHighlight,
@@ -146,20 +146,30 @@
   `;
 
   let saveTimeout = null;
+  let pendingProgress = null;
   const saveProgress = (progress) => {
+    // Mirrored immediately so a closed tab or a dead connection can't lose the
+    // page; the push is debounced, since a page turn is a discrete event.
     saveLocalProgress(bookId, progress);
+    pendingProgress = progress;
     if (saveTimeout) clearTimeout(saveTimeout);
-    saveTimeout = setTimeout(async () => {
-      try {
-        await fetch(`/api/books/${bookId}/progress`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ progress }),
-        });
-      } catch (err) {
-        // Silently fail
-      }
+    saveTimeout = setTimeout(() => {
+      saveTimeout = null;
+      const progressStr = pendingProgress;
+      pendingProgress = null;
+      if (progressStr) pushProgress(bookId, progressStr);
     }, 1000);
+  };
+
+  // Send a debounced save that hasn't gone out yet, for teardown and pagehide.
+  const flushProgress = () => {
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+      saveTimeout = null;
+    }
+    const progressStr = pendingProgress;
+    pendingProgress = null;
+    if (progressStr) pushProgress(bookId, progressStr);
   };
 
   const fetchAnnotations = async () => {
@@ -483,6 +493,8 @@
   };
 
   onMount(async () => {
+    window.addEventListener("pagehide", flushProgress);
+
     const savedFontSize = localStorage.getItem("readerFontSize");
     if (savedFontSize) {
       fontSize = parseInt(savedFontSize, 10);
@@ -519,21 +531,26 @@
       loading = false;
     }
 
-    return () => {
-      if (hideTimeout) clearTimeout(hideTimeout);
-      if (saveTimeout) clearTimeout(saveTimeout);
-      if (view) {
-        try {
-          view.remove();
-        } catch (e) {}
-        view = null;
-      }
-      if (pdfDoc) {
-        pdfDoc.destroy();
-        pdfDoc = null;
-      }
-      epubContentDoc = null;
-    };
+  });
+
+  // Teardown lives in onDestroy, not in a function returned from onMount: this
+  // component's onMount is async, and Svelte ignores the return value of an
+  // async onMount, so a cleanup declared there never runs at all.
+  onDestroy(() => {
+    window.removeEventListener("pagehide", flushProgress);
+    if (hideTimeout) clearTimeout(hideTimeout);
+    flushProgress();
+    if (view) {
+      try {
+        view.remove();
+      } catch (e) {}
+      view = null;
+    }
+    if (pdfDoc) {
+      pdfDoc.destroy();
+      pdfDoc = null;
+    }
+    epubContentDoc = null;
   });
 
   $effect(() => {
@@ -647,8 +664,10 @@
           if (savedFoliate) {
             try {
               const progress = JSON.parse(savedFoliate);
-              if (FOLIATE_FORMATS.includes(progress.type) && progress.cfi) {
-                view.goTo(progress.cfi);
+              if (progress.cfi) {
+                // A CFI from an older build of the book may no longer resolve;
+                // fall back to the start rather than leaving a blank reader.
+                view.goTo(progress.cfi).catch(() => view.goTo(0));
                 return;
               }
             } catch (e) {}

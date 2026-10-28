@@ -272,6 +272,9 @@
     height: 100%;
     background: var(--progress-fill);
     transition: width 0.3s ease;
+    /* A just-started item is 1% wide, which is a sub-pixel sliver on a card
+       this size - the floor keeps "started" visibly different from "not". */
+    min-width: 3px;
   }
 
   .delete-btn {

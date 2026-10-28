@@ -1,11 +1,13 @@
 <script>
   import { onMount } from "svelte";
-  import { saveLocalProgress, effectiveProgress } from "../lib/offline.js";
+  import { saveLocalProgress, effectiveProgress, pushProgress } from "../lib/offline.js";
+  import { createMediaProgressTracker, createThrottle } from "../lib/progress.js";
 
   let { bookId, metadata, onClose } = $props();
 
   const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
   const SKIP_SECONDS = 30;
+  const SAVE_INTERVAL = 5000;
   const SLEEP_OPTIONS = [5, 10, 15, 30, 45, 60]; // minutes
 
   let audioEl = $state(null);
@@ -28,20 +30,25 @@
   let error = $state(null);
 
   let seeking = false; // true while the user drags the scrubber
+
   // Parse the resume position at init (not in onMount) so it's ready before the
   // audio element's loadedmetadata event can fire on a fast/cached load.
-  let resumePosition = (() => {
-    try {
-      const raw = effectiveProgress(metadata);
-      if (raw) {
-        const p = JSON.parse(raw);
-        if (p.type === "audio" && p.position) return p.position;
-      }
-    } catch {}
-    return 0;
-  })();
-  let resumeApplied = false;
-  let saveTimeout = null;
+  const tracker = createMediaProgressTracker({
+    type: "audio",
+    resumePosition: (() => {
+      try {
+        const raw = effectiveProgress(metadata);
+        if (raw) {
+          const p = JSON.parse(raw);
+          if (p.type === "audio" && p.position) return p.position;
+        }
+      } catch {}
+      return 0;
+    })(),
+  });
+  const saver = createThrottle(SAVE_INTERVAL, (progressStr) =>
+    pushProgress(bookId, progressStr),
+  );
 
   // Sleep timer
   let sleepRemaining = $state(0); // seconds left; 0 = inactive
@@ -81,29 +88,17 @@
   };
 
   const saveProgress = (immediate = false) => {
-    if (!duration) return;
-    const progressStr = JSON.stringify({
-      type: "audio",
-      position: Math.floor(currentTime),
-      duration: Math.floor(duration),
-    });
+    if (!audioEl) return;
+    // Read the element, not the `currentTime` state: the state only catches up
+    // on the first timeupdate, and reading it here stored position 0 for books
+    // that had in fact resumed correctly.
+    const record = tracker.snapshot(audioEl.currentTime);
+    if (!record) return;
+    const progressStr = JSON.stringify(record);
+    // Mirror locally on every save; only the network push is throttled.
     saveLocalProgress(bookId, progressStr);
-    const body = JSON.stringify({ progress: progressStr });
-    const send = () => {
-      fetch(`/api/books/${bookId}/progress`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body,
-        keepalive: true,
-      }).catch(() => {});
-    };
-    if (immediate) {
-      if (saveTimeout) clearTimeout(saveTimeout);
-      send();
-      return;
-    }
-    if (saveTimeout) clearTimeout(saveTimeout);
-    saveTimeout = setTimeout(send, 3000);
+    if (immediate) saver.flush(progressStr);
+    else saver.call(progressStr);
   };
 
   const togglePlay = () => {
@@ -114,6 +109,7 @@
 
   const skip = (delta) => {
     if (!audioEl || !duration) return;
+    tracker.markUserSeek();
     audioEl.currentTime = Math.min(
       Math.max(audioEl.currentTime + delta, 0),
       duration,
@@ -122,6 +118,7 @@
 
   const seekToChapter = (index) => {
     if (!audioEl || !chapters[index]) return;
+    tracker.markUserSeek();
     audioEl.currentTime = chapters[index].start;
     showChapters = false;
   };
@@ -189,17 +186,22 @@
   };
 
   const onScrubChange = (event) => {
+    tracker.markUserSeek();
     if (audioEl) audioEl.currentTime = Number(event.target.value);
     seeking = false;
+    saveProgress(true);
   };
 
   const onLoadedMetadata = () => {
     duration = audioEl.duration || 0;
     audioEl.playbackRate = playbackRate;
-    if (!resumeApplied && resumePosition > 0 && resumePosition < duration - 2) {
-      audioEl.currentTime = resumePosition;
+    const seekTo = tracker.begin(audioEl.duration);
+    if (seekTo !== null) {
+      audioEl.currentTime = seekTo;
+      // Keep the displayed position in step with the element right away, so the
+      // scrubber doesn't sit at 0:00 until the first timeupdate.
+      currentTime = seekTo;
     }
-    resumeApplied = true;
     updateMediaPosition();
   };
 
@@ -327,6 +329,7 @@
     set("nexttrack", chapters.length ? () => changeChapter(1) : null);
     set("seekto", (details) => {
       if (audioEl && details.seekTime != null) {
+        tracker.markUserSeek();
         audioEl.currentTime = details.seekTime;
         currentTime = details.seekTime;
         updateMediaPosition();
@@ -350,9 +353,9 @@
 
     return () => {
       window.removeEventListener("pagehide", flushSave);
-      if (saveTimeout) clearTimeout(saveTimeout);
       if (sleepInterval) clearInterval(sleepInterval);
       saveProgress(true);
+      saver.dispose();
     };
   });
 </script>
@@ -370,6 +373,9 @@
   onended={() => {
     playing = false;
     if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "none";
+    // `ended` does not fire `pause`, so this is the only chance to record that
+    // the book was finished.
+    saveProgress(true);
   }}
   onerror={() => (error = "Failed to load audio")}
 ></audio>

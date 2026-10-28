@@ -3,7 +3,6 @@
   import {
     SUPPORTED_EXTENSIONS,
     FILE_ACCEPT,
-    FOLIATE_FORMATS,
     AUDIO_FORMATS,
     VIDEO_FORMATS,
   } from "../lib/constants.js";
@@ -17,6 +16,7 @@
     effectiveProgress,
     flushLocalProgress,
   } from "../lib/offline.js";
+  import { computeProgressPercent } from "../lib/progress.js";
 
   let { onOpenBook, initialScroll = 0 } = $props();
 
@@ -30,7 +30,7 @@
   let dragDepth = $state(0);
   let editingBook = $state(null);
   let showPodcasts = $state(false);
-  let activeKind = $state("Unfinished");
+  let activeKind = $state("All");
   let showControls = $state(false);
   let downloaded = $state(new Set());
   let downloadingIds = $state(new Set());
@@ -158,6 +158,7 @@
       const response = await fetch("/api/books");
       const data = await response.json();
       books = Array.isArray(data) ? data : [];
+      // Push anything this device recorded while the server was unreachable.
       flushLocalProgress(books);
     } catch (error) {
       console.error("Failed to fetch books:", error);
@@ -264,35 +265,10 @@
     }
   };
 
-  const computeProgress = (book) => {
-    const raw = effectiveProgress(book);
-    if (!raw) return 0;
-    try {
-      const progress = JSON.parse(raw);
-      if (
-        FOLIATE_FORMATS.includes(progress.type) &&
-        progress.fraction !== undefined
-      ) {
-        return Math.round(progress.fraction * 100);
-      } else if (progress.type === "pdf" && progress.page && progress.totalPages) {
-        return Math.round((progress.page / progress.totalPages) * 100);
-      } else if (
-        (progress.type === "audio" || progress.type === "video") &&
-        progress.position &&
-        progress.duration
-      ) {
-        return Math.round((progress.position / progress.duration) * 100);
-      }
-    } catch (e) {
-      return 0;
-    }
-    return 0;
-  };
-
   const progressByBookId = $derived.by(() => {
     const map = new Map();
     for (const book of books) {
-      map.set(book.id, computeProgress(book));
+      map.set(book.id, computeProgressPercent(effectiveProgress(book)));
     }
     return map;
   });
