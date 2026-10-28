@@ -154,53 +154,108 @@ export async function downloadedIds() {
 }
 
 // --- Progress mirror -------------------------------------------------------
-// Every progress save is also written locally with a timestamp, so it survives
-// an offline session even if the server PUT couldn't go through.
+// Every progress save is mirrored locally so an offline session survives even
+// if the server PUT can't go through, and the entry records whether the server
+// has acknowledged that exact value.
+//
+// Sync state is tracked explicitly rather than by comparing timestamps: the
+// browser's clock and the server's are independent, and weighing one against
+// the other meant a device running a few days fast pinned its own stale
+// position in place and then flushed it back up over newer progress from
+// another device.
 
 const progressKey = (id) => `quiret:progress:${id}`;
 
 export function saveLocalProgress(bookId, progressStr) {
+  if (!bookId || !progressStr) return;
   try {
     localStorage.setItem(
       progressKey(bookId),
-      JSON.stringify({ progress: progressStr, at: Date.now() }),
+      JSON.stringify({ progress: progressStr, at: Date.now(), pending: true }),
     );
   } catch {}
 }
 
 export function getLocalProgress(bookId) {
+  if (!bookId) return null;
   try {
     const v = JSON.parse(localStorage.getItem(progressKey(bookId)));
-    return v && v.progress ? v : null;
+    return v && typeof v.progress === "string" && v.progress ? v : null;
   } catch {
     return null;
   }
 }
 
-// The progress string to actually use for a book: prefer the local mirror when
-// offline, or when it's newer than what the server last recorded.
-export function effectiveProgress(book) {
-  const local = getLocalProgress(book?.id);
-  if (!local) return book?.readingProgress || "";
-  const serverAt = book?.progressUpdatedAt ? Date.parse(book.progressUpdatedAt) : 0;
-  if (typeof navigator !== "undefined" && !navigator.onLine) return local.progress;
-  return local.at > serverAt ? local.progress : book?.readingProgress || "";
+// Record that the server stored exactly `progressStr`, stamping the server's own
+// timestamp for it. A later local save may already have superseded this value,
+// so the entry is only marked synced while it still matches.
+export function markLocalProgressSynced(bookId, progressStr, serverAt) {
+  const local = getLocalProgress(bookId);
+  if (!local || local.progress !== progressStr) return;
+  try {
+    localStorage.setItem(
+      progressKey(bookId),
+      JSON.stringify({ ...local, pending: false, syncedServerAt: serverAt || "" }),
+    );
+  } catch {}
 }
 
-// Push any locally-newer progress up to the server (best-effort, online only).
+// The progress string to actually use for a book. A pending mirror entry is this
+// device's own unsent position and wins; once the server has it, the server is
+// authoritative, because another device may have moved further along.
+//
+// `pending` is the flag rather than its opposite so that an entry written by an
+// older build - which had no sync bookkeeping at all - reads as already sent.
+// Those entries were pushed on every save, and treating them as unsent would
+// replay stale positions over whatever the server now holds.
+export function effectiveProgress(book) {
+  const local = getLocalProgress(book?.id);
+  const server = book?.readingProgress || "";
+  if (!local) return server;
+  if (local.pending) return local.progress;
+  const serverAt = book?.progressUpdatedAt || "";
+  if (serverAt && serverAt !== local.syncedServerAt) return server;
+  return server || local.progress;
+}
+
+// Mirror entries the server hasn't acknowledged yet, as {id, progress}.
+// Entries from an older build carry no `pending` flag and are left alone.
+export function pendingLocalProgress(books) {
+  const out = [];
+  for (const book of books || []) {
+    const local = getLocalProgress(book?.id);
+    if (!local || !local.pending) continue;
+    if (local.progress === (book?.readingProgress || "")) continue;
+    out.push({ id: book.id, progress: local.progress });
+  }
+  return out;
+}
+
+// Push a progress string to the server and record that it landed. Callers mirror
+// locally first, so a failed push simply leaves the mirror holding unsent work -
+// re-mirroring here would stamp this value over a newer local save.
+// `keepalive` lets the request outlive the page on teardown.
+export async function pushProgress(bookId, progressStr) {
+  try {
+    const res = await fetch(`/api/books/${bookId}/progress`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ progress: progressStr }),
+      keepalive: true,
+    });
+    if (!res.ok) return false;
+    const data = await res.json().catch(() => null);
+    markLocalProgressSynced(bookId, progressStr, data?.progressUpdatedAt);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Push any unsent progress up to the server (best-effort, online only).
 export async function flushLocalProgress(books) {
-  if (typeof navigator !== "undefined" && !navigator.onLine) return;
-  for (const book of books) {
-    const local = getLocalProgress(book.id);
-    if (!local) continue;
-    const serverAt = book.progressUpdatedAt ? Date.parse(book.progressUpdatedAt) : 0;
-    if (local.at <= serverAt) continue;
-    try {
-      await fetch(`/api/books/${book.id}/progress`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ progress: local.progress }),
-      });
-    } catch {}
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+  for (const { id, progress } of pendingLocalProgress(books)) {
+    await pushProgress(id, progress);
   }
 }

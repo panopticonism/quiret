@@ -1,56 +1,65 @@
 <script>
   import { onMount } from "svelte";
-  import { saveLocalProgress, effectiveProgress } from "../lib/offline.js";
+  import { saveLocalProgress, effectiveProgress, pushProgress } from "../lib/offline.js";
+  import { createMediaProgressTracker, createThrottle } from "../lib/progress.js";
 
   let { bookId, metadata, onClose } = $props();
 
   let videoEl = $state(null);
   let error = $state(null);
-  let resumeApplied = false;
-  let saveTimeout = null;
+  // True only while the resume seek we issued ourselves is in flight, so it
+  // isn't mistaken for the user scrubbing.
+  let resumeSeeking = false;
+
+  const SAVE_INTERVAL = 5000;
 
   const fileUrl = $derived(`/api/books/${bookId}/file`);
 
-  const resumePosition = (() => {
-    try {
-      const raw = effectiveProgress(metadata);
-      if (raw) {
-        const p = JSON.parse(raw);
-        if (p.type === "video" && p.position) return p.position;
-      }
-    } catch {}
-    return 0;
-  })();
+  const tracker = createMediaProgressTracker({
+    type: "video",
+    resumePosition: (() => {
+      try {
+        const raw = effectiveProgress(metadata);
+        if (raw) {
+          const p = JSON.parse(raw);
+          if (p.type === "video" && p.position) return p.position;
+        }
+      } catch {}
+      return 0;
+    })(),
+  });
+  const saver = createThrottle(SAVE_INTERVAL, (progressStr) =>
+    pushProgress(bookId, progressStr),
+  );
 
   const save = (immediate = false) => {
-    if (!videoEl || !videoEl.duration) return;
-    const progressStr = JSON.stringify({
-      type: "video",
-      position: Math.floor(videoEl.currentTime),
-      duration: Math.floor(videoEl.duration),
-    });
+    if (!videoEl) return;
+    const record = tracker.snapshot(videoEl.currentTime);
+    if (!record) return;
+    const progressStr = JSON.stringify(record);
+    // Mirror locally on every save; only the network push is throttled.
     saveLocalProgress(bookId, progressStr);
-    const send = () =>
-      fetch(`/api/books/${bookId}/progress`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ progress: progressStr }),
-        keepalive: true,
-      }).catch(() => {});
-    if (saveTimeout) clearTimeout(saveTimeout);
-    if (immediate) {
-      send();
-      return;
-    }
-    saveTimeout = setTimeout(send, 3000);
+    if (immediate) saver.flush(progressStr);
+    else saver.call(progressStr);
   };
 
   const onLoaded = () => {
-    const d = videoEl.duration || 0;
-    if (!resumeApplied && resumePosition > 0 && resumePosition < d - 2) {
-      videoEl.currentTime = resumePosition;
+    const seekTo = tracker.begin(videoEl.duration);
+    if (seekTo !== null) {
+      resumeSeeking = true;
+      videoEl.currentTime = seekTo;
     }
-    resumeApplied = true;
+  };
+
+  // Native controls are the only scrubber here, so a seek event is how a
+  // deliberate jump makes itself known.
+  const onSeeked = () => {
+    if (resumeSeeking) {
+      resumeSeeking = false;
+      return;
+    }
+    tracker.markUserSeek();
+    save(true);
   };
 
   const handleKey = (e) => {
@@ -62,8 +71,8 @@
     window.addEventListener("pagehide", flush);
     return () => {
       window.removeEventListener("pagehide", flush);
-      if (saveTimeout) clearTimeout(saveTimeout);
       save(true);
+      saver.dispose();
     };
   });
 </script>
@@ -92,6 +101,8 @@
       onloadedmetadata={onLoaded}
       ontimeupdate={() => save()}
       onpause={() => save(true)}
+      onseeked={onSeeked}
+      onended={() => save(true)}
       onerror={() =>
         (error =
           "This video couldn't be played — the format or codec may be unsupported by your browser.")}
