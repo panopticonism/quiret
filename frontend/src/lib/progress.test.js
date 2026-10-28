@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   computeProgressPercent,
   createMediaProgressTracker,
+  createDocumentProgressTracker,
   createThrottle,
 } from "./progress.js";
 
@@ -267,5 +268,55 @@ describe("createThrottle", () => {
     clock.advance(10000);
     assert.deepEqual(sent, ["first"]);
     assert.equal(clock.pending(), 0);
+  });
+});
+
+describe("createDocumentProgressTracker", () => {
+  test("opening a book at its cover is not progress", () => {
+    const t = createDocumentProgressTracker();
+    assert.equal(t.shouldStore("epubcfi(/6/2!/4/2[cover],,/2)"), false);
+  });
+
+  test("turning a page is progress", () => {
+    const t = createDocumentProgressTracker();
+    t.shouldStore("epubcfi(/6/2!/4/2[cover],,/2)");
+    assert.equal(t.shouldStore("epubcfi(/6/4!/4/2,/2,/4)"), true);
+  });
+
+  // Opening a resumed book reports the restored place, which is already stored;
+  // re-storing it on open is how a close-without-reading used to touch the
+  // record's timestamp.
+  test("opening a resumed book does not re-store its position", () => {
+    const t = createDocumentProgressTracker();
+    assert.equal(t.shouldStore("epubcfi(/6/134!/4,/2,/18/3:61)"), false);
+  });
+
+  // A relayout - rotation, a font-size change - re-reports the same spot. That
+  // is not a page turn.
+  test("re-reporting the opening position is not progress", () => {
+    const t = createDocumentProgressTracker();
+    t.shouldStore("page-1");
+    assert.equal(t.shouldStore("page-1"), false);
+    assert.equal(t.shouldStore("page-1"), false);
+  });
+
+  test("a PDF sitting on page 1 is not progress", () => {
+    const t = createDocumentProgressTracker();
+    assert.equal(t.shouldStore(1), false);
+  });
+
+  test("moving to another PDF page is progress", () => {
+    const t = createDocumentProgressTracker();
+    t.shouldStore(1);
+    assert.equal(t.shouldStore(2), true);
+  });
+
+  // Once the reader has genuinely moved, coming back is a real position too -
+  // otherwise paging back to the start would silently stop being recorded.
+  test("returning to the opening position after moving is progress", () => {
+    const t = createDocumentProgressTracker();
+    t.shouldStore(1);
+    assert.equal(t.shouldStore(5), true);
+    assert.equal(t.shouldStore(1), true);
   });
 });

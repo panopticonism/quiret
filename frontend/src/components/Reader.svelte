@@ -16,6 +16,7 @@
     VIDEO_FORMATS,
   } from "../lib/constants.js";
   import { saveLocalProgress, effectiveProgress, pushProgress } from "../lib/offline.js";
+  import { createDocumentProgressTracker } from "../lib/progress.js";
   import {
     drawPDFHighlightsForPage,
     applyPDFHighlight,
@@ -147,6 +148,7 @@
 
   let saveTimeout = null;
   let pendingProgress = null;
+  const tracker = createDocumentProgressTracker();
   const saveProgress = (progress) => {
     // Mirrored immediately so a closed tab or a dead connection can't lose the
     // page; the push is debounced, since a page turn is a discrete event.
@@ -489,7 +491,9 @@
       pdfState.scale,
     );
 
-    saveProgress(JSON.stringify({ type: "pdf", page: pageNum, totalPages }));
+    if (tracker.shouldStore(pageNum)) {
+      saveProgress(JSON.stringify({ type: "pdf", page: pageNum, totalPages }));
+    }
   };
 
   onMount(async () => {
@@ -579,9 +583,11 @@
         const cfi = e.detail.cfi;
         if (cfi) {
           foliateState.cfi = cfi;
-          saveProgress(
-            JSON.stringify({ type: bookMetadata.fileType, cfi, fraction }),
-          );
+          if (tracker.shouldStore(cfi)) {
+            saveProgress(
+              JSON.stringify({ type: bookMetadata.fileType, cfi, fraction }),
+            );
+          }
         }
         applyAllAnnotations();
       });

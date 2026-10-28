@@ -93,6 +93,36 @@ export function createMediaProgressTracker({ type, resumePosition = 0 }) {
   };
 }
 
+// Opening a document is not progress. Whatever position a reader reports right
+// after opening is simply where it opened - the cover of a fresh book, or the
+// place a resumed one was restored to - so the first report is taken as the
+// baseline and not stored. Storing it put every book that had merely been
+// opened onto the Continue shelf at 1%, and re-stamped a resumed book's record
+// when it was closed again unread.
+export function createDocumentProgressTracker() {
+  let opened = false;
+  let baseline = null;
+  let moved = false;
+
+  return {
+    // True if `position` - a CFI for text formats, a page number for PDFs -
+    // represents somewhere the reader actually went.
+    shouldStore(position) {
+      if (!opened) {
+        opened = true;
+        baseline = position;
+        return false;
+      }
+      if (!moved) {
+        // A relayout re-reports the opening position; that is not a page turn.
+        if (position === baseline) return false;
+        moved = true;
+      }
+      return true;
+    },
+  };
+}
+
 // Throttle with a trailing call: the first save goes out at once and at most one
 // more is queued per interval. A plain debounce was used here before, and since
 // `timeupdate` fires about four times a second it reset the timer faster than it
