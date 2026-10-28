@@ -186,16 +186,16 @@ export function getLocalProgress(bookId) {
   }
 }
 
-// Record that the server stored exactly `progressStr`, stamping the server's own
-// timestamp for it. A later local save may already have superseded this value,
-// so the entry is only marked synced while it still matches.
-export function markLocalProgressSynced(bookId, progressStr, serverAt) {
+// Record that the server stored exactly `progressStr`. A later local save may
+// already have superseded this value, so the entry is only cleared while it
+// still matches.
+export function markLocalProgressSynced(bookId, progressStr) {
   const local = getLocalProgress(bookId);
   if (!local || local.progress !== progressStr) return;
   try {
     localStorage.setItem(
       progressKey(bookId),
-      JSON.stringify({ ...local, pending: false, syncedServerAt: serverAt || "" }),
+      JSON.stringify({ ...local, pending: false }),
     );
   } catch {}
 }
@@ -212,10 +212,12 @@ export function effectiveProgress(book) {
   const local = getLocalProgress(book?.id);
   const server = book?.readingProgress || "";
   if (!local) return server;
+  // Unsent work on this device is the one thing that outranks the server.
   if (local.pending) return local.progress;
-  const serverAt = book?.progressUpdatedAt || "";
-  if (serverAt && serverAt !== local.syncedServerAt) return server;
-  return server || local.progress;
+  // Otherwise the server is authoritative - including when it says there is no
+  // progress. Falling back to the mirror here resurrected records that had been
+  // cleared server-side, putting those items back on the Continue shelf.
+  return server;
 }
 
 // Mirror entries the server hasn't acknowledged yet, as {id, progress}.
@@ -244,8 +246,7 @@ export async function pushProgress(bookId, progressStr) {
       keepalive: true,
     });
     if (!res.ok) return false;
-    const data = await res.json().catch(() => null);
-    markLocalProgressSynced(bookId, progressStr, data?.progressUpdatedAt);
+    markLocalProgressSynced(bookId, progressStr);
     return true;
   } catch {
     return false;

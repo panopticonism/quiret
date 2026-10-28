@@ -64,6 +64,16 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // The library listing decides what the shelves show, so serving a stale copy
+  // is visibly wrong: progress changed on another device - or cleared - would
+  // persist for a whole load. Network first, with the cache as the offline
+  // fallback. Per-book metadata stays stale-while-revalidate, since that is
+  // what offline playback reads.
+  if (url.pathname === "/api/books") {
+    event.respondWith(networkFirst(req, API_CACHE));
+    return;
+  }
+
   if (url.pathname.startsWith("/api/")) {
     event.respondWith(staleWhileRevalidate(req, API_CACHE));
     return;
@@ -94,6 +104,17 @@ async function cacheFirst(req, cacheName) {
     return res;
   } catch {
     return cached || Response.error();
+  }
+}
+
+async function networkFirst(req, cacheName) {
+  const cache = await caches.open(cacheName);
+  try {
+    const res = await fetch(req);
+    if (res.ok) cache.put(req, res.clone());
+    return res;
+  } catch {
+    return (await cache.match(req)) || Response.error();
   }
 }
 

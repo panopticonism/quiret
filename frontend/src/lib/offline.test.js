@@ -79,7 +79,7 @@ describe("local progress mirror", () => {
     Date.now = () => Date.parse("2026-11-01T00:00:00Z");
     try {
       saveLocalProgress("b1", POS_200);
-      markLocalProgressSynced("b1", POS_200, "2026-10-04T20:29:13Z");
+      markLocalProgressSynced("b1", POS_200);
     } finally {
       Date.now = realNow;
     }
@@ -95,7 +95,7 @@ describe("local progress mirror", () => {
 
   test("a synced local mirror never shadows the server, whatever the clock says", () => {
     saveLocalProgress("b1", POS_200);
-    markLocalProgressSynced("b1", POS_200, "2026-10-04T20:29:13Z");
+    markLocalProgressSynced("b1", POS_200);
 
     // Another device has since moved further along.
     const book = {
@@ -108,7 +108,7 @@ describe("local progress mirror", () => {
 
   test("a synced mirror is not queued for flushing", () => {
     saveLocalProgress("b1", POS_200);
-    markLocalProgressSynced("b1", POS_200, "2026-10-04T20:29:13Z");
+    markLocalProgressSynced("b1", POS_200);
     const book = {
       id: "b1",
       readingProgress: POS_900,
@@ -135,7 +135,7 @@ describe("local progress mirror", () => {
     saveLocalProgress("b1", POS_200);
     saveLocalProgress("b1", POS_900);
     // A slow PUT for the earlier position lands after the later local save.
-    markLocalProgressSynced("b1", POS_200, "2026-10-04T20:29:13Z");
+    markLocalProgressSynced("b1", POS_200);
     const book = { id: "b1", readingProgress: POS_200 };
     assert.equal(effectiveProgress(book), POS_900);
     assert.deepEqual(pendingLocalProgress([book]), [
@@ -178,5 +178,32 @@ describe("mirror entries written by an older build", () => {
   test("are not replayed over a progress record that was cleared", () => {
     legacy(POS_200);
     assert.deepEqual(pendingLocalProgress([{ id: "b1" }]), []);
+  });
+});
+
+describe("progress cleared on the server", () => {
+  // Clearing a progress record server-side has to stick. `server || local` made
+  // "the server deliberately has none" indistinguishable from "we have no
+  // server data", so a cleared record was resurrected from the mirror on the
+  // next library load - and the item reappeared on the Continue shelf.
+  test("is not resurrected from a synced mirror entry", () => {
+    saveLocalProgress("b1", POS_200);
+    markLocalProgressSynced("b1", POS_200);
+
+    // The record has since been cleared: no progress, no timestamp.
+    assert.equal(effectiveProgress({ id: "b1" }), "");
+  });
+
+  test("is not resurrected from an older build's mirror entry", () => {
+    store.set(
+      "quiret:progress:b1",
+      JSON.stringify({ progress: POS_200, at: Date.now() }),
+    );
+    assert.equal(effectiveProgress({ id: "b1" }), "");
+  });
+
+  test("still yields to this device's unsent progress", () => {
+    saveLocalProgress("b1", POS_900);
+    assert.equal(effectiveProgress({ id: "b1" }), POS_900);
   });
 });
