@@ -45,7 +45,7 @@ Your library lives in a Docker volume and persists between restarts.
 ## Usage
 
 1. **Upload** — drag and drop EPUB, PDF, FB2, CBZ, or audio files anywhere, or click **Upload**.
-2. **Auto-import** — place files in `BOOKS_PATH` (and/or `AUDIOBOOKS_PATH`); they're scanned recursively on startup, or hit **Rescan** to pick up new ones without restarting.
+2. **Auto-import** — place files in `BOOKS_PATH` (and/or `AUDIOBOOKS_PATH`); they're scanned recursively on startup, or hit **Rescan** to pick up new ones without restarting. Folders named `archived` (and hidden folders) are skipped.
 3. **Browse** — search, sort, and filter by type from the controls menu; jump back into anything in progress from the **Continue** shelf.
 4. **Read** — click a book to open the reader; turn pages with arrow keys or swipe, and use the **Contents** panel to jump between chapters.
 5. **Listen** — audiobooks open a player with variable speed, skip, a sleep timer, chapters, and background / lock-screen controls.

@@ -46,8 +46,9 @@ func ScanDirectory(booksDir string) ([]models.Book, error) {
 		}
 
 		if d.IsDir() {
-			// Skip hidden directories (e.g. .git, .Trash) but not the root itself.
-			if filePath != booksDir && strings.HasPrefix(d.Name(), ".") {
+			// Skip hidden directories (e.g. .git, .Trash) and archived folders,
+			// but not the root itself.
+			if filePath != booksDir && (strings.HasPrefix(d.Name(), ".") || strings.EqualFold(d.Name(), "archived")) {
 				return fs.SkipDir
 			}
 			return nil
